@@ -79,7 +79,12 @@ export default function Buyer() {
 
   if (loading)
     return (
-      <div className="min-h-screen grid place-items-center" style={{ background: "linear-gradient(180deg,#0b1220 0%, #111827 100%)" }}>
+      <div
+        className="min-h-screen grid place-items-center"
+        style={{
+          background: "linear-gradient(180deg,#0b1220 0%, #111827 100%)",
+        }}
+      >
         <div className="flex items-center gap-3 text-slate-300">
           <span className="inline-block w-3 h-3 rounded-full bg-sky-400 animate-pulse" />
           <span className="text-sm tracking-wide">Loading profile…</span>
@@ -100,8 +105,12 @@ export default function Buyer() {
               {(buyer?.full_name || "U").charAt(0).toUpperCase()}
             </div>
             <div className="pb-2">
-              <h1 className="text-white text-2xl md:text-3xl font-extrabold tracking-tight">Buyer Profile</h1>
-              <p className="text-slate-400 text-sm">Manage your account details</p>
+              <h1 className="text-white text-2xl md:text-3xl font-extrabold tracking-tight">
+                Buyer Profile
+              </h1>
+              <p className="text-slate-400 text-sm">
+                Manage your account details
+              </p>
             </div>
           </div>
 
@@ -109,19 +118,46 @@ export default function Buyer() {
             {!editMode ? (
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-                  <p className="text-slate-400 text-xs uppercase tracking-wide">Full Name</p>
-                  <p className="mt-1 text-white text-lg font-semibold break-words">{buyer.full_name}</p>
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">
+                    Full Name
+                  </p>
+                  <p className="mt-1 text-white text-lg font-semibold break-words">
+                    {buyer.full_name}
+                  </p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-                  <p className="text-slate-400 text-xs uppercase tracking-wide">Email</p>
-                  <p className="mt-1 text-white text-lg font-medium break-words">{buyer.email}</p>
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">
+                    Email
+                  </p>
+                  <p className="mt-1 text-white text-lg font-medium break-words">
+                    {buyer.email}
+                  </p>
                 </div>
                 <div className="md:col-span-2 flex justify-end">
                   <button
                     onClick={() => setEditMode(true)}
                     className="inline-flex items-center gap-2 bg-gradient-to-r from-sky-400 to-cyan-400 text-slate-900 font-extrabold py-2.5 px-5 rounded-lg shadow-[0_10px_30px_rgba(56,189,248,0.35)] hover:brightness-110 active:scale-[0.98] transition"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 20h9" stroke="#0b1220" strokeWidth="2" strokeLinecap="round"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" stroke="#0b1220" strokeWidth="2" strokeLinecap="round"/></svg>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M12 20h9"
+                        stroke="#0b1220"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M16.5 3.5a2.121 2.121 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z"
+                        stroke="#0b1220"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </svg>
                     Edit Profile
                   </button>
                 </div>
@@ -129,7 +165,9 @@ export default function Buyer() {
             ) : (
               <div className="space-y-5">
                 <div>
-                  <label className="block text-sm mb-2 text-slate-300">Full Name</label>
+                  <label className="block text-sm mb-2 text-slate-300">
+                    Full Name
+                  </label>
                   <input
                     type="text"
                     name="full_name"
@@ -140,7 +178,9 @@ export default function Buyer() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 text-slate-300">Email</label>
+                  <label className="block text-sm mb-2 text-slate-300">
+                    Email
+                  </label>
                   <input
                     type="email"
                     name="email"
@@ -151,7 +191,9 @@ export default function Buyer() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 text-slate-300">Password (leave blank to keep unchanged)</label>
+                  <label className="block text-sm mb-2 text-slate-300">
+                    Password (leave blank to keep unchanged)
+                  </label>
                   <input
                     type="password"
                     name="password"
