@@ -967,3 +967,440 @@ app.get("/feedback/:product_id", buyerOnly, (req, res) => {
     res.json(results);
   });
 });
+
+//------------------------------- ----------------- -----------------
+// POST /feedback  -> create feedback (buyerOnly)
+app.post("/feedback", buyerOnly, (req, res) => {
+  const { product_id, message } = req.body;
+  const buyer_id = req.user.id;
+
+  if (!product_id || !message)
+    return res.status(400).json({ message: "Missing product_id or message" });
+
+  const insertQuery = `
+    INSERT INTO feedback (product_id, buyer_id, message)
+    VALUES (?, ?, ?)
+  `;
+
+  db.query(insertQuery, [product_id, buyer_id, message], (err, result) => {
+    if (err) {
+      console.error("Feedback insert error:", err);
+      return res.status(500).json({ message: "DB insert error" });
+    }
+    res.json({ message: "Feedback saved", feedbackId: result.insertId });
+  });
+});
+
+app.get("/admin/purchases", adminOnly, (req, res) => {
+  // Query params: type, range, month, year, section
+  const { type, range, month, year, section } = req.query;
+
+  // Build date filters in JS
+  let startDate = null;
+  let endDate = null; // inclusive
+
+  const now = new Date();
+
+  if (type === "day") {
+    const days = parseInt(range, 10) || 7;
+    // start = now - days + 1 (to include today as last day)
+    startDate = new Date(now);
+    startDate.setDate(now.getDate() - (days - 1));
+    // zero time for start
+    startDate.setHours(0, 0, 0, 0);
+    // end = today end
+    endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+  } else if (type === "month") {
+    // requires month and year
+    const m = parseInt(month, 10);
+    const y = parseInt(year, 10) || now.getFullYear();
+    if (!m || m < 1 || m > 12) {
+      return res.status(400).json({ message: "Invalid month" });
+    }
+    startDate = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    // last day of month
+    endDate = new Date(y, m, 0, 23, 59, 59, 999);
+  } else if (type === "year") {
+    const y = parseInt(year, 10) || now.getFullYear();
+    startDate = new Date(y, 0, 1, 0, 0, 0, 0);
+    endDate = new Date(y, 11, 31, 23, 59, 59, 999);
+  } else {
+    // default: last 30 days
+    startDate = new Date(now);
+    startDate.setDate(now.getDate() - 29);
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+  }
+
+  // optional section filter
+  let sectionFilter = "";
+  const params = [];
+  if (section && section !== "all") {
+    sectionFilter = " AND pr.section = ? ";
+    params.push(section);
+  }
+
+  // SQL: select needed fields and filter by purchase_date between startDate and endDate
+  const query = `
+    SELECT 
+      p.purchase_id,
+      p.buyer_id,
+      b.full_name AS buyer_name,
+      p.product_id,
+      pr.name AS product_name,
+      pr.section,
+      p.amount,
+      p.purchase_date,
+      p.status
+    FROM purchase p
+    JOIN buyer b ON p.buyer_id = b.buyer_id
+    JOIN product pr ON p.product_id = pr.product_id
+    WHERE p.purchase_date BETWEEN ? AND ? 
+      AND p.status = 'succeeded'
+      ${sectionFilter}
+    ORDER BY p.purchase_date ASC
+  `;
+
+  // push date params (MySQL will accept JS Date objects or ISO strings)
+  params.unshift(endDate);
+  params.unshift(startDate);
+
+  db.query(query, params, (err, results) => {
+    if (err) {
+      console.error("Error fetching filtered purchases:", err);
+      return res.status(500).json({ message: err.message });
+    }
+    // return raw rows to frontend for grouping
+    res.json(results);
+  });
+});
+
+// Example Express route
+app.get("/admin/revenue-chart", (req, res) => {
+  const { year, viewMode } = req.query;
+  const targetYear = Number(year) || new Date().getFullYear();
+
+  if (viewMode === "yearly") {
+    const query = `
+      SELECT 
+        MONTH(p.purchase_date) AS month,
+        pr.section,
+        SUM(p.amount) AS total
+      FROM purchase p
+      JOIN product pr ON p.product_id = pr.product_id
+      WHERE p.status = 'succeeded'
+        AND YEAR(p.purchase_date) = ?
+      GROUP BY month, pr.section
+      ORDER BY month
+    `;
+    db.query(query, [targetYear], (err, result) => {
+      if (err) {
+        console.error("Error fetching revenue chart data:", err);
+        return res.status(500).json({ message: err.message });
+      }
+      return res.json(result);
+    });
+  } else {
+    const query = `
+      SELECT 
+        YEAR(p.purchase_date) AS year,
+        pr.section,
+        SUM(p.amount) AS total
+      FROM purchase p
+      JOIN product pr ON p.product_id = pr.product_id
+      WHERE p.status = 'succeeded'
+      GROUP BY year, pr.section
+      ORDER BY year
+    `;
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error fetching revenue chart data:", err);
+        return res.status(500).json({ message: err.message });
+      }
+      return res.json(result);
+    });
+  }
+});
+//
+// Route: Get total revenue by section (for pie chart)
+// Example Express route for the pie chart
+app.get("/admin/section-revenue", (req, res) => {
+  const query = `
+    SELECT pr.section, SUM(p.amount) AS total
+    FROM purchase p
+    JOIN product pr ON p.product_id = pr.product_id
+    WHERE p.status = 'succeeded'
+    GROUP BY pr.section
+  `;
+  db.query(query, (err, result) => {
+    if (err) {
+      console.error("Error fetching section revenue data:", err);
+      return res.status(500).json({ message: err.message });
+    }
+    return res.json(result);
+  });
+});
+
+// Route: Get dashboard stats (Total Revenue, Active Users, Total Sales, Products Listed)
+app.get("/admin/dashboard-stats", adminOnly, (req, res) => {
+  const queries = {
+    totalRevenue: `
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM purchase
+      WHERE status = 'succeeded'
+    `,
+    activeUsers: `
+      SELECT COUNT(*) AS total
+      FROM buyer
+      WHERE status = 'active'
+    `,
+    totalSales: `
+      SELECT COUNT(*) AS total
+      FROM purchase
+      WHERE status = 'succeeded'
+    `,
+    productsListed: `
+      SELECT COUNT(*) AS total
+      FROM product p
+      JOIN seller s ON p.seller_id = s.seller_id
+      WHERE s.status = 'active'
+    `
+  };
+
+  // Execute all queries in parallel
+  Promise.all([
+    new Promise((resolve, reject) => {
+      db.query(queries.totalRevenue, (err, result) => {
+        if (err) reject(err);
+        else resolve(result[0].total);
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(queries.activeUsers, (err, result) => {
+        if (err) reject(err);
+        else resolve(result[0].total);
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(queries.totalSales, (err, result) => {
+        if (err) reject(err);
+        else resolve(result[0].total);
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(queries.productsListed, (err, result) => {
+        if (err) reject(err);
+        else resolve(result[0].total);
+      });
+    })
+  ])
+    .then(([totalRevenue, activeUsers, totalSales, productsListed]) => {
+      res.json({
+        totalRevenue: Number(totalRevenue) || 0,
+        activeUsers: Number(activeUsers) || 0,
+        totalSales: Number(totalSales) || 0,
+        productsListed: Number(productsListed) || 0
+      });
+    })
+    .catch(err => {
+      console.error("Error fetching dashboard stats:", err);
+      res.status(500).json({ message: err.message });
+    });
+});
+
+////admin buyer nad seller management
+// GET all buyers
+app.get("/admin/buyers", adminOnly, (req, res) => {
+  const query = `
+    SELECT buyer_id AS id, full_name AS name, email, created_at AS joined_date, status
+    FROM buyer
+    ORDER BY created_at DESC
+  `;
+  db.query(query, (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json(results);
+  });
+});
+
+// GET all sellers
+app.get("/admin/sellers", adminOnly, (req, res) => {
+  const query = `
+    SELECT seller_id AS id, full_name AS name, email, created_at AS joined_date, status
+    FROM seller
+    ORDER BY created_at DESC
+  `;
+  db.query(query, (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json(results);
+  });
+});
+
+// DELETE (deactivate) buyer
+app.delete("/admin/buyer/:id", adminOnly, (req, res) => {
+  const { id } = req.params;
+  const query = "UPDATE buyer SET status = 'inactive' WHERE buyer_id = ?";
+  db.query(query, [id], (err, result) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (result.affectedRows === 0)
+      return res.status(404).json({ message: "Buyer not found" });
+    res.json({ message: "Buyer deactivated successfully" });
+  });
+});
+
+// DELETE (deactivate) seller
+app.delete("/admin/seller/:id", adminOnly, (req, res) => {
+  const { id } = req.params;
+  const query = "UPDATE seller SET status = 'inactive' WHERE seller_id = ?";
+  db.query(query, [id], (err, result) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (result.affectedRows === 0)
+      return res.status(404).json({ message: "Seller not found" });
+    res.json({ message: "Seller deactivated successfully" });
+  });
+});
+
+// Activate buyer
+app.patch("/admin/buyer/:id/activate", adminOnly, (req, res) => {
+  const { id } = req.params;
+  const query = "UPDATE buyer SET status = 'active' WHERE buyer_id = ?";
+  db.query(query, [id], (err, result) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (result.affectedRows === 0)
+      return res.status(404).json({ message: "Buyer not found" });
+    res.json({ message: "Buyer activated successfully" });
+  });
+});
+
+// Activate seller
+app.patch("/admin/seller/:id/activate", adminOnly, (req, res) => {
+  const { id } = req.params;
+  const query = "UPDATE seller SET status = 'active' WHERE seller_id = ?";
+  db.query(query, [id], (err, result) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (result.affectedRows === 0)
+      return res.status(404).json({ message: "Seller not found" });
+    res.json({ message: "Seller activated successfully" });
+  });
+});
+
+//Hisotry of purchases for buyer
+
+// GET all purchases of logged-in buyer
+app.get("/buyerHistory", buyerOnly, (req, res) => {
+    const buyer_id = req.user.id; // ✅ use the ID from decoded JWT
+
+  const query = `
+    SELECT p.purchase_id, pr.name AS product_name, pr.section, pr.picture_url, 
+           p.amount, p.currency, p.status AS purchase_status, p.purchase_date,
+           s.full_name AS seller_name
+    FROM purchase p
+    JOIN product pr ON p.product_id = pr.product_id
+    JOIN seller s ON p.seller_id = s.seller_id
+    WHERE p.buyer_id = ?
+    ORDER BY p.purchase_date DESC
+  `;
+
+  db.query(query, [buyer_id], (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json({ purchases: results });
+  });
+});
+
+//-------------
+// GET all purchases of products belonging to logged-in seller
+app.get("/sellerHistory", sellerOnly, (req, res) => {
+  const seller_id = req.user.id; // from JWT
+
+  const query = `
+    SELECT p.purchase_id, pr.name AS product_name, pr.section, pr.picture_url, 
+           p.amount, p.currency, p.status AS purchase_status, p.purchase_date,
+           b.full_name AS buyer_name, b.email AS buyer_email
+    FROM purchase p
+    JOIN product pr ON p.product_id = pr.product_id
+    JOIN buyer b ON p.buyer_id = b.buyer_id
+    WHERE p.seller_id = ?
+    ORDER BY p.purchase_date DESC
+  `;
+
+  db.query(query, [seller_id], (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json({ purchases: results });
+  });
+});
+
+///----------------------------------------------------
+///-----------------
+// Recommendation System Route (Buyer Only)
+const { getRecommendations } = require('./recommendation_service');
+
+// GET /buyer/recommendations
+// Returns top-N product recommendations with predicted ratings >= 4.0
+app.get("/buyer/recommendations", buyerOnly, async (req, res) => {
+  const buyer_id = req.user.id;
+  const topN = parseInt(req.query.top) || 10;
+  const minRating = parseFloat(req.query.min_rating) || 1.5; // Show recommendations from 1.5-5
+
+  try {
+    // Get recommendations from ML model
+    const result = await getRecommendations(buyer_id, topN, minRating);
+    
+    if (result.error) {
+      return res.status(500).json({ message: result.error });
+    }
+
+    // Fetch product details from database for recommended product IDs
+    const productIds = result.recommendations.map(r => r.product_id);
+    
+    if (productIds.length === 0) {
+      return res.json({ 
+        message: "No recommendations available at this time",
+        recommendations: [] 
+      });
+    }
+
+    const placeholders = productIds.map(() => '?').join(',');
+    const query = `
+      SELECT p.product_id, p.name, p.brand_name, p.description, p.picture_url,
+             p.section, p.price, p.seller_id, s.full_name AS seller_name,
+             COALESCE(SUM(r.rating = 'up'), 0) AS upvotes,
+             COALESCE(SUM(r.rating = 'down'), 0) AS downvotes
+      FROM product p
+      JOIN seller s ON p.seller_id = s.seller_id
+      LEFT JOIN product_rating r ON p.product_id = r.product_id
+      WHERE p.product_id IN (${placeholders}) AND s.status = 'active'
+      GROUP BY p.product_id
+    `;
+
+    const products = await db.query(query, productIds);
+
+    // Merge ML predictions with product details
+    const recommendations = result.recommendations.map(rec => {
+      const product = products.find(p => p.product_id === rec.product_id);
+      return product ? {
+        ...product,
+        predicted_rating: rec.predicted_rating
+      } : null;
+    }).filter(p => p !== null);
+
+    res.json({
+      user_id: buyer_id,
+      recommendations,
+      count: recommendations.length
+    });
+
+  } catch (err) {
+    console.error("Recommendation error:", err);
+    res.status(500).json({ 
+      message: "Failed to generate recommendations",
+      error: err.message 
+    });
+  }
+});
+
+// Start server--------------------------------------------------------------------
+const PORT = 5000;
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
