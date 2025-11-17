@@ -529,3 +529,441 @@ app.get("/favorites", buyerOnly, (req, res) => {
     res.json(grouped);
   });
 });
+//-------------------Get all products of a seller------------------------------------ ----------------- -----------------
+
+///-----------------------this will be profile sections----------------- ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+
+app.put("/update-seller-profile", sellerOnly, async (req, res) => {
+  const { full_name, email, password, brand_name } = req.body;
+  const seller_id = req.user.id;
+
+  if (!full_name || !email)
+    return res
+      .status(400)
+      .json({ message: "Full name and email are required" });
+
+  // Check if email already exists (except current seller)
+  const emailQuery = "SELECT * FROM seller WHERE email = ? AND seller_id != ?";
+  db.query(emailQuery, [email, seller_id], async (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (results.length > 0)
+      return res.status(400).json({ message: "Email already in use" });
+
+    // If password provided, hash it
+    let hashedPassword = undefined;
+    if (password && password.trim() !== "") {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
+
+    // Build update query dynamically
+    let updateQuery =
+      "UPDATE seller SET full_name = ?, email = ?, brand_name = ?";
+    const params = [full_name, email, brand_name || null];
+
+    if (hashedPassword) {
+      updateQuery += ", password = ?";
+      params.push(hashedPassword);
+    }
+
+    updateQuery += " WHERE seller_id = ?";
+    params.push(seller_id);
+
+    db.query(updateQuery, params, (err2) => {
+      if (err2) return res.status(500).json({ message: err2.message });
+      res.json({ message: "Profile updated successfully" });
+    });
+  });
+});
+
+// Route to get seller details
+app.get("/seller-profile", sellerOnly, (req, res) => {
+  const seller_id = req.user.id;
+  const query =
+    "SELECT seller_id, full_name, email, brand_name FROM seller WHERE seller_id = ?";
+  db.query(query, [seller_id], (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    // console.log(results);
+
+    res.json(results[0]);
+  });
+});
+//----Buyer profile-------------------------------------- ----------------- -----------------
+// Get Buyer Profile
+app.get("/buyer-profile", buyerOnly, (req, res) => {
+  if (req.user.role !== "buyer")
+    return res.status(403).json({ message: "Access denied" });
+
+  db.query(
+    "SELECT full_name, email FROM buyer WHERE buyer_id = ?",
+    [req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Server error" });
+      res.json(results[0]);
+    }
+  );
+});
+
+// Update Buyer Profile
+app.put("/update-buyer-profile", buyerOnly, async (req, res) => {
+  if (req.user.role !== "buyer")
+    return res.status(403).json({ message: "Access denied" });
+
+  const { full_name, email, password } = req.body;
+  let query = "UPDATE buyer SET full_name=?, email=?";
+  let params = [full_name, email];
+
+  // If password provided, hash it
+  let hashedPassword = undefined;
+  if (password && password.trim() !== "") {
+    hashedPassword = await bcrypt.hash(password, 10);
+  }
+  if (password && password.trim() !== "") {
+    query += ", password=?";
+    params.push(hashedPassword);
+  }
+
+  query += " WHERE buyer_id =?";
+  params.push(req.user.id);
+
+  db.query(query, params, (err) => {
+    if (err) return res.status(500).json({ message: "Update failed" });
+    res.json({ message: "Profile updated successfully" });
+  });
+});
+
+/////------------------------------------------------ ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+// this will be the seller product fetching section where seller can see his own products and also
+//update or delete them
+// GET /seller-products
+app.get("/seller-products", sellerOnly, (req, res) => {
+  console.log("User Role:", req.user.role);
+  console.log("Seller ID:", req.user.id);
+
+  db.query(
+    "SELECT * FROM product WHERE seller_id = ? ORDER BY created_at DESC",
+    [req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(results);
+    }
+  );
+});
+//-----  ---/----
+//
+
+// PUT /update-product/:id
+app.put("/update-product/:id", sellerOnly, (req, res) => {
+  const productId = req.params.id;
+  const { name, brand_name, section, price, picture_url, description } =
+    req.body; // ⬅️ include description
+
+  // Verify ownership
+  db.query(
+    "SELECT seller_id FROM product WHERE product_id = ?",
+    [productId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      if (rows.length === 0)
+        return res.status(404).json({ message: "Product not found" });
+      if (rows[0].seller_id !== req.user.id)
+        return res
+          .status(403)
+          .json({ message: "You can only edit your own products" });
+
+      // Perform update
+      db.query(
+        `UPDATE product
+       SET name = ?, brand_name = ?, section = ?, price = ?, picture_url = ?, description = ?
+       WHERE product_id = ?`,
+        [name, brand_name, section, price, picture_url, description, productId], // ⬅️ include description
+        (err2) => {
+          if (err2) return res.status(500).json({ message: err2.message });
+          res.json({ message: "Product updated successfully" });
+        }
+      );
+    }
+  );
+});
+
+// DELETE /delete-product/:id
+// DELETE /delete-product/:id
+app.delete("/delete-product/:id", sellerOnly, (req, res) => {
+  const productId = req.params.id;
+
+  // Verify ownership
+  db.query(
+    "SELECT seller_id FROM product WHERE product_id = ?",
+    [productId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      if (rows.length === 0)
+        return res.status(404).json({ message: "Product not found" });
+      if (rows[0].seller_id !== req.user.id)
+        return res
+          .status(403)
+          .json({ message: "You can only remove your own products" });
+
+      // ✅ Step 1: Delete purchases linked to this product
+      db.query(
+        "DELETE FROM purchase WHERE product_id = ?",
+        [productId],
+        (err2) => {
+          if (err2) return res.status(500).json({ message: err2.message });
+
+          // ✅ Step 2: Delete the product
+          db.query(
+            "DELETE FROM product WHERE product_id = ?",
+            [productId],
+            (err3) => {
+              if (err3) return res.status(500).json({ message: err3.message });
+
+              res.json({ message: "Product and related purchases deleted" });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// ----------------------------------------
+// Seller: products list (with basic stats)
+// GET /seller/products
+app.get("/seller/products", sellerOnly, (req, res) => {
+  const sellerId = req.user.id;
+  const query = `
+    SELECT
+      p.product_id,
+      p.name,
+      p.section,
+      p.price,
+      p.picture_url,
+      p.created_at,
+      COALESCE((SELECT COUNT(*) FROM feedback f WHERE f.product_id = p.product_id), 0) AS feedback_count,
+      COALESCE((SELECT COUNT(*) FROM product_rating r WHERE r.product_id = p.product_id AND r.rating = 'up'), 0) AS ups,
+      COALESCE((SELECT COUNT(*) FROM product_rating r WHERE r.product_id = p.product_id AND r.rating = 'down'), 0) AS downs,
+      COALESCE((SELECT COUNT(*) FROM purchase pu WHERE pu.product_id = p.product_id AND pu.status = 'succeeded'), 0) AS sales
+    FROM product p
+    WHERE p.seller_id = ?
+    ORDER BY p.created_at DESC
+  `;
+  db.query(query, [sellerId], (err, results) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json({ products: results });
+  });
+});
+
+// Seller: feedback for a specific product (ownership enforced)
+// GET /seller/products/:productId/feedback
+app.get("/seller/products/:productId/feedback", sellerOnly, (req, res) => {
+  const sellerId = req.user.id;
+  const { productId } = req.params;
+
+  const ownershipQuery = "SELECT 1 FROM product WHERE product_id = ? AND seller_id = ? LIMIT 1";
+  db.query(ownershipQuery, [productId, sellerId], (ownErr, ownRows) => {
+    if (ownErr) return res.status(500).json({ message: ownErr.message });
+    if (!ownRows || ownRows.length === 0)
+      return res.status(403).json({ message: "Not authorized to view this product's feedback" });
+
+    const feedbackQuery = `
+      SELECT
+        f.feedback_id,
+        f.message,
+        f.created_at,
+        b.full_name AS buyer_name,
+        b.email AS buyer_email
+      FROM feedback f
+      JOIN buyer b ON f.buyer_id = b.buyer_id
+      WHERE f.product_id = ?
+      ORDER BY f.created_at DESC
+    `;
+    db.query(feedbackQuery, [productId], (fbErr, rows) => {
+      if (fbErr) return res.status(500).json({ message: fbErr.message });
+      res.json({ feedback: rows });
+    });
+  });
+});
+
+///---------------------------------------- ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+///this is for PAYMENT via test mode stripe----------------- ----------------- -----------------
+
+/**
+ * POST /create-payment-intent
+ * Body: { productId }
+ * Auth: buyerOnly
+ * Returns: { clientSecret }
+ */
+// create-payment-intent (Backend Stripe API Call)
+
+// Its job is to ask Stripe to prepare a payment.
+
+// You send amount + currency + metadata, and Stripe returns a clientSecret.
+
+// That clientSecret is used on the frontend to open the Stripe payment popup and let the user enter card details.
+
+// No money is actually taken yet — it's just the setup phase of the transaction.
+app.post("/create-payment-intent", buyerOnly, (req, res) => {
+  const { productId } = req.body;
+  if (!productId) return res.status(400).json({ message: "Missing productId" });
+
+  // Fetch product price and seller_id
+  db.query(
+    "SELECT price, seller_id FROM product WHERE product_id = ? LIMIT 1",
+    [productId],
+    async (err, results) => {
+      if (err) {
+        console.error("DB error:", err);
+        return res.status(500).json({ message: "DB error" });
+      }
+      if (!results || results.length === 0)
+        return res.status(404).json({ message: "Product not found" });
+
+      const { price, seller_id } = results[0];
+      // price is in PKR (decimal)
+      const amountInCents = pkrToUsdCents(Number(price));
+      if (amountInCents <= 0)
+        return res.status(400).json({ message: "Invalid price" });
+
+      try {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
+          currency: "usd", // processing currency
+          metadata: {
+            product_id: productId,
+            seller_id: seller_id,
+            buyer_id: req.user.id,
+            amount_pkr: price.toString(),
+          },
+        });
+
+        res.json({ clientSecret: paymentIntent.client_secret });
+      } catch (stripeErr) {
+        console.error("Stripe error:", stripeErr);
+        res.status(500).json({ message: "Stripe error" });
+      }
+    }
+  );
+});
+
+/**
+ * POST /save-purchase
+ * Body: { product_id, seller_id, amount }  -- amount in PKR (displayed currency)
+ * Auth: buyerOnly
+ * Action: inserts purchase record with stripe_payment_id and status
+ */
+// This only runs after Stripe confirms payment success.
+
+// You store the purchase record in your database (user_id, product_id, seller_id, amount, etc.).
+
+// This makes sure you keep history / receipts / triggers for seller payout or digital delivery.
+app.post("/save-purchase", buyerOnly, (req, res) => {
+  const { product_id, seller_id, amount, stripe_payment_id, currency } =
+    req.body;
+  const buyer_id = req.user.id;
+
+  if (!product_id || !seller_id || !amount || !stripe_payment_id)
+    return res.status(400).json({ message: "Missing fields" });
+
+  const cur = currency || "PKR";
+  // Insert into purchase table
+  const insertQuery = `
+    INSERT INTO purchase (product_id, buyer_id, seller_id, amount, currency, stripe_payment_id, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'succeeded')
+  `;
+  db.query(
+    insertQuery,
+    [product_id, buyer_id, seller_id, amount, cur, stripe_payment_id],
+    (err, result) => {
+      if (err) {
+        console.error("DB insert error:", err);
+        return res.status(500).json({ message: "DB insert error" });
+      }
+      res.json({ message: "Purchase saved", purchaseId: result.insertId });
+    }
+  );
+});
+
+// ------------------------------------------------------------
+// Rating feature for purchases (1-5 stars) - buyer only
+// GET /buyer/unrated-purchases -> list of succeeded purchases with NULL rating
+app.get("/buyer/unrated-purchases", buyerOnly, (req, res) => {
+  const buyer_id = req.user.id;
+  const query = `
+    SELECT p.purchase_id, p.product_id, pr.name AS product_name, pr.picture_url,
+           pr.section, p.amount, p.currency, p.purchase_date
+    FROM purchase p
+    JOIN product pr ON p.product_id = pr.product_id
+    WHERE p.buyer_id = ? AND p.status = 'succeeded' AND p.rating IS NULL
+    ORDER BY p.purchase_date DESC
+  `;
+  db.query(query, [buyer_id], (err, rows) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json({ purchases: rows });
+  });
+});
+
+// POST /buyer/rate-purchase { purchase_id, rating }
+// rating must be integer 1..5
+app.post("/buyer/rate-purchase", buyerOnly, (req, res) => {
+  const { purchase_id, rating } = req.body;
+  const buyer_id = req.user.id;
+
+  const numericRating = Number(rating);
+  if (!purchase_id || !numericRating)
+    return res.status(400).json({ message: "purchase_id and rating required" });
+  if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5)
+    return res.status(400).json({ message: "Rating must be an integer 1-5" });
+
+  // Verify purchase belongs to buyer and not rated yet
+  const checkQuery = "SELECT rating FROM purchase WHERE purchase_id = ? AND buyer_id = ? LIMIT 1";
+  db.query(checkQuery, [purchase_id, buyer_id], (err, rows) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (!rows.length)
+      return res.status(404).json({ message: "Purchase not found" });
+    if (rows[0].rating !== null)
+      return res.status(400).json({ message: "Purchase already rated" });
+
+    const updateQuery = "UPDATE purchase SET rating = ? WHERE purchase_id = ?";
+    db.query(updateQuery, [numericRating, purchase_id], (err2, result) => {
+      if (err2) return res.status(500).json({ message: err2.message });
+      if (!result.affectedRows)
+        return res.status(500).json({ message: "Failed to update rating" });
+      res.json({ message: "Rating saved" });
+    });
+  });
+});
+//Notes
+
+// create-payment-intent reads price from product table (PKR) and creates a Stripe PaymentIntent charging USD converted amount.
+
+// save-purchase expects the frontend to send PKR amount (for display/storage) and stripe_payment_id (paymentIntent.id).
+///---------------------------------------- ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+///---------------------------------------- ----------------- -----------------
+//feedback section----------------------------------- ----------------- -----------------
+// GET /feedback/:product_id  -> returns list of feedback with buyer name
+app.get("/feedback/:product_id", buyerOnly, (req, res) => {
+  const product_id = req.params.product_id;
+
+  const query = `
+    SELECT f.feedback_id, f.product_id, f.buyer_id, f.message, f.created_at,
+           b.full_name AS buyer_name
+    FROM feedback f
+    JOIN buyer b ON f.buyer_id = b.buyer_id
+    WHERE f.product_id = ?
+    ORDER BY f.created_at DESC
+  `;
+
+  db.query(query, [product_id], (err, results) => {
+    if (err) {
+      console.error("Feedback fetch error:", err);
+      return res.status(500).json({ message: "DB error" });
+    }
+    res.json(results);
+  });
+});
