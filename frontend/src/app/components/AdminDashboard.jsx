@@ -98,20 +98,59 @@ export default function AdminDashboard() {
   function buildUrl() {
     const base = "http://localhost:5000/admin/purchases";
     const params = new URLSearchParams();
-    params.set("type", rangeType);
-
-    if (rangeType === "day") {
-      params.set("range", rangeValue); // 7/30/90
-    } else if (rangeType === "month") {
-      params.set("month", rangeValue); // 1..12
-      params.set("year", yearValue);
-    } else if (rangeType === "year") {
-      params.set("year", rangeValue || yearValue);
+    
+    // Validate rangeType
+    if (!["day", "month", "year"].includes(rangeType)) {
+      console.error("Invalid range type:", rangeType);
+      params.set("type", "day");
+    } else {
+      params.set("type", rangeType);
     }
 
-    if (selectedSection && selectedSection !== "all") {
+    if (rangeType === "day") {
+      // Validate day range value
+      const validDayRanges = ["7", "30", "90"];
+      if (!validDayRanges.includes(rangeValue)) {
+        console.error("Invalid day range:", rangeValue);
+        params.set("range", "7");
+      } else {
+        params.set("range", rangeValue);
+      }
+    } else if (rangeType === "month") {
+      // Validate month (1-12)
+      const monthNum = parseInt(rangeValue, 10);
+      if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+        console.error("Invalid month:", rangeValue);
+        params.set("month", "1");
+      } else {
+        params.set("month", rangeValue);
+      }
+      
+      // Validate year
+      const yearNum = parseInt(yearValue, 10);
+      if (isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+        console.error("Invalid year:", yearValue);
+        params.set("year", String(new Date().getFullYear()));
+      } else {
+        params.set("year", yearValue);
+      }
+    } else if (rangeType === "year") {
+      // Validate year
+      const yearNum = parseInt(rangeValue || yearValue, 10);
+      if (isNaN(yearNum) || yearNum < 2020 || yearNum > 2030) {
+        console.error("Invalid year:", rangeValue);
+        params.set("year", String(new Date().getFullYear()));
+      } else {
+        params.set("year", rangeValue || yearValue);
+      }
+    }
+
+    // Validate section
+    const validSections = ["all", "study tools", "clothes", "food"];
+    if (selectedSection && validSections.includes(selectedSection)) {
       params.set("section", selectedSection);
     } else {
+      console.error("Invalid section:", selectedSection);
       params.set("section", "all");
     }
 
@@ -120,43 +159,77 @@ export default function AdminDashboard() {
 
   function fetchData() {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) {
+      console.error("No authentication token found");
+      return;
+    }
 
     const url = buildUrl();
     fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch");
+        if (!res.ok) {
+          if (res.status === 401) {
+            alert("⚠ Session expired. Please log in again.");
+            window.location.href = "/login";
+          }
+          throw new Error(`Failed to fetch data (${res.status})`);
+        }
         return res.json();
       })
       .then((data) => {
+        if (!Array.isArray(data)) {
+          console.error("Invalid data format received:", data);
+          setSalesData([]);
+          return;
+        }
         setSalesData(data || []);
       })
       .catch((err) => {
         console.error("Error fetching sales:", err);
+        alert("⚠ Failed to fetch sales data. Please try again.");
         setSalesData([]);
       });
   }
 
   function fetchStats() {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) {
+      console.error("No authentication token found");
+      return;
+    }
 
     fetch("http://localhost:5000/admin/dashboard-stats", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          if (res.status === 401) {
+            alert("⚠ Session expired. Please log in again.");
+            window.location.href = "/login";
+          }
+          throw new Error(`Failed to fetch stats (${res.status})`);
+        }
+        return res.json();
+      })
       .then((data) => {
+        // Validate received data
+        if (typeof data !== "object") {
+          console.error("Invalid stats data format:", data);
+          return;
+        }
+        
         setStats({
-          totalRevenue: data.totalRevenue || 0,
-          activeUsers: data.activeUsers || 0,
-          totalSales: data.totalSales || 0,
-          productsListed: data.productsListed || 0,
+          totalRevenue: Number(data.totalRevenue) || 0,
+          activeUsers: Number(data.activeUsers) || 0,
+          totalSales: Number(data.totalSales) || 0,
+          productsListed: Number(data.productsListed) || 0,
         });
       })
       .catch((err) => {
         console.error("Error fetching stats:", err);
+        alert("⚠ Failed to fetch dashboard statistics. Please refresh the page.");
       });
   }
 
