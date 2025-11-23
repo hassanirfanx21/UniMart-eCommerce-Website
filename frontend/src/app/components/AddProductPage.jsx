@@ -14,42 +14,91 @@ export default function AddProductPage() {
     description: "",
     picture_url: "",
     section: "",
-    price: "", // ✅ new
-    brand_name: "", // ✅ new
+    price: "",
+    brand_name: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [selectedFile, setSelectedFile] = useState(null);
   const router = useRouter();
-  // ✅ FRONTEND PROTECTION: Only allow sellers---------------------imported useEffect for role based authorization
-  //we applied it to backend by sellerOnly middleware but this is frontend protection
-  //so that if a non-seller tries to access this page directly via URL, they get redirected
+
+  // Validation functions
+  const validateProductName = (name) => {
+    if (!name.trim()) return "Product name is required";
+    if (name.trim().length < 3) return "Product name must be at least 3 characters";
+    if (name.trim().length > 100) return "Product name must not exceed 100 characters";
+    return null;
+  };
+
+  const validatePrice = (price) => {
+    if (!price) return "Price is required";
+    const numPrice = parseFloat(price);
+    if (isNaN(numPrice)) return "Price must be a valid number";
+    if (numPrice <= 0) return "Price must be greater than 0";
+    if (numPrice > 1000000) return "Price must not exceed 1,000,000";
+    return null;
+  };
+
+  const validateSection = (section) => {
+    if (!section) return "Please select a section";
+    const validSections = ["study tools", "clothes", "food"];
+    if (!validSections.includes(section.toLowerCase())) return "Invalid section selected";
+    return null;
+  };
+
+  const validateImage = (file) => {
+    if (!file) return "Product image is required";
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!validTypes.includes(file.type)) return "Image must be JPEG, PNG, or WebP format";
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) return "Image size must not exceed 5MB";
+    return null;
+  };
+
+  const validateDescription = (description) => {
+    if (description && description.length > 1000) return "Description must not exceed 1000 characters";
+    return null;
+  };
+  // ✅ FRONTEND PROTECTION: Only allow sellers
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role");
-    if (!token) {// this means user is not logged in
-      alert("Please log in first.");
+    if (!token) {
+      alert("⚠ Please log in first.");
       router.push("/login");
       return;
     }
-    if (!token || role !== "seller") {
-      alert("Access denied! Only sellers can add products.");
-      router.push("/"); // redirect to homepage or login
+    if (role !== "seller") {
+      alert("⚠ Access denied! Only sellers can add products.");
+      router.push("/");
     }
-  }, []);
+  }, [router]);
+
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+    
+    // Clear error for this field when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: null }));
+    }
   };
 
-  // ✅ Handle Image Upload to Cloudinary
-  const [selectedFile, setSelectedFile] = useState(null);
-  //file being sent to Cloudinary is stored in selectedFile state
-  // When a user selects a file, this function is triggered
-  // It takes the first file from the file input (e.target.files[0])
-  // and updates the selectedFile state with that file object
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
-    if (file) setSelectedFile(file);
+    if (file) {
+      const imageError = validateImage(file);
+      if (imageError) {
+        setErrors(prev => ({ ...prev, image: imageError }));
+        alert(imageError);
+        e.target.value = ""; // Clear the file input
+        return;
+      }
+      setSelectedFile(file);
+      setErrors(prev => ({ ...prev, image: null }));
+    }
   };
 
   ///----------------

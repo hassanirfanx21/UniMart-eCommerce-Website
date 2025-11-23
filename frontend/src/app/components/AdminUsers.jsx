@@ -62,8 +62,14 @@ const AdminUsers = () => {
 
   // Activate user
   const handleActivate = (type, id) => {
+    // Validate inputs
     if (!id) {
-      alert("Error: User ID is missing");
+      alert("⚠ Error: User ID is missing");
+      return;
+    }
+    
+    if (!type || (type !== "buyer" && type !== "seller")) {
+      alert("⚠ Error: Invalid user type");
       return;
     }
     
@@ -82,7 +88,7 @@ const AdminUsers = () => {
         return res.json();
       })
       .then(() => {
-        alert(`${type.charAt(0).toUpperCase() + type.slice(1)} activated successfully`);
+        alert(`✅ ${type.charAt(0).toUpperCase() + type.slice(1)} activated successfully`);
         if (type === "buyer") {
           setBuyers((prev) =>
             prev.map((b) => (b.id === id ? { ...b, status: "active" } : b))
@@ -95,18 +101,24 @@ const AdminUsers = () => {
       })
       .catch((err) => {
         console.error("Error activating user:", err);
-        alert(`Failed to activate user. ${err.message}`);
+        alert(`⚠ Failed to activate user. ${err.message}`);
       });
   };
 
   // Deactivate user
   const handleDeactivate = (type, id) => {
+    // Validate inputs
     if (!id) {
-      alert("Error: User ID is missing");
+      alert("⚠ Error: User ID is missing");
       return;
     }
     
-    if (!window.confirm(`Are you sure you want to deactivate this ${type}?`)) return;
+    if (!type || (type !== "buyer" && type !== "seller")) {
+      alert("⚠ Error: Invalid user type");
+      return;
+    }
+    
+    if (!window.confirm(`⚠ Are you sure you want to deactivate this ${type}? This will restrict their access.`)) return;
 
     fetch(`http://localhost:5000/admin/${type}/${id}`, {
       method: "DELETE",
@@ -121,7 +133,7 @@ const AdminUsers = () => {
         return res.json();
       })
       .then(() => {
-        alert(`${type.charAt(0).toUpperCase() + type.slice(1)} deactivated successfully`);
+        alert(`✅ ${type.charAt(0).toUpperCase() + type.slice(1)} deactivated successfully`);
         if (type === "buyer") {
           setBuyers((prev) =>
             prev.map((b) => (b.id === id ? { ...b, status: "inactive" } : b))
@@ -134,7 +146,7 @@ const AdminUsers = () => {
       })
       .catch((err) => {
         console.error("Error deactivating user:", err);
-        alert(`Failed to deactivate user. ${err.message}`);
+        alert(`⚠ Failed to deactivate user. ${err.message}`);
       });
   };
 

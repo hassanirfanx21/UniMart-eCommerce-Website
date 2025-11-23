@@ -8,10 +8,59 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("buyer"); // default role
+  const [errors, setErrors] = useState({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const router = useRouter();
 
+  // Validation functions
+  const validateName = (name) => {
+    if (!name.trim()) return "Name is required";
+    if (name.trim().length < 2) return "Name must be at least 2 characters";
+    if (!/^[a-zA-Z\s]+$/.test(name)) return "Name can only contain letters and spaces";
+    return null;
+  };
+
+  const validateEmail = (email, role) => {
+    if (!email.trim()) return "Email is required";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return "Please enter a valid email address";
+    
+    // Buyer must have .edu.pk email
+    if (role === "buyer" && !email.toLowerCase().endsWith(".edu.pk")) {
+      return "Buyers must use a university email ending with .edu.pk";
+    }
+    return null;
+  };
+
+  const validatePassword = (password) => {
+    if (!password) return "Password is required";
+    if (password.length < 2) return "Password must be at least 2 characters";
+    return null;
+  };
+
   const handleSignup = async () => {
-    if (!name || !email || !password) return alert("Fill all fields!");
+    // Clear previous errors
+    setErrors({});
+    const newErrors = {};
+
+    // Validate all fields
+    const nameError = validateName(name);
+    const emailError = validateEmail(email, role);
+    const passwordError = validatePassword(password);
+
+    if (nameError) newErrors.name = nameError;
+    if (emailError) newErrors.email = emailError;
+    if (passwordError) newErrors.password = passwordError;
+    if (!termsAccepted) newErrors.terms = "You must accept the Terms & Conditions";
+
+    // If there are any errors, display them and stop
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      // Show first error in alert
+      const firstError = Object.values(newErrors)[0];
+      alert(firstError);
+      return;
+    }
 
     try {
       const res = await fetch("http://localhost:5000/signup", {
@@ -27,21 +76,18 @@ export default function Signup() {
         // Trust the selected role to keep navbar consistent post-signup
         localStorage.setItem("role", role);
 
-        alert(`Signed up and logged in as ${role}`);
+        alert(`✅ Successfully signed up and logged in as ${role}`);
         if (role === "buyer") {
-          router.push("/catalogue"); // or "/CataloguePage" based on your route
+          router.push("/catalogue");
         } else {
-          router.push("/seller-profile"); 
-          //i have to change this after login and add a dashboard for seller and admin
-          ///keep in minds for later that i have to create a dashboard for seller and admin
-          //router.push("/"); // normal homepage for others --- IGNORE ---
+          router.push("/seller-profile");
         }
       } else {
         alert(data.message || "Signup failed");
       }
     } catch (err) {
       console.error(err);
-      alert("Server error");
+      alert("❌ Server error. Please try again later.");
     }
   };
 
@@ -132,21 +178,50 @@ export default function Signup() {
                 type="text"
                 placeholder="John Doe"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (errors.name) {
+                    const err = validateName(e.target.value);
+                    setErrors(prev => ({ ...prev, name: err }));
+                  }
+                }}
                 className="w-full"
-                style={{ background: "#0f172a", border: "1px solid #1f2937", color: "#e5e7eb", padding: "12px 14px", borderRadius: 10, outline: "none" }}
+                style={{ 
+                  background: "#0f172a", 
+                  border: `1px solid ${errors.name ? '#ef4444' : '#1f2937'}`, 
+                  color: "#e5e7eb", 
+                  padding: "12px 14px", 
+                  borderRadius: 10, 
+                  outline: "none" 
+                }}
               />
+              {errors.name && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>⚠ {errors.name}</p>}
             </div>
             <div>
               <label className="block text-sm mb-2" style={{ color: "#9ca3af" }}>Email</label>
               <input
                 type="email"
-                placeholder="you@university.edu"
+                placeholder={role === "buyer" ? "you@university.edu.pk" : "you@email.com"}
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) {
+                    const err = validateEmail(e.target.value, role);
+                    setErrors(prev => ({ ...prev, email: err }));
+                  }
+                }}
                 className="w-full"
-                style={{ background: "#0f172a", border: "1px solid #1f2937", color: "#e5e7eb", padding: "12px 14px", borderRadius: 10, outline: "none" }}
+                style={{ 
+                  background: "#0f172a", 
+                  border: `1px solid ${errors.email ? '#ef4444' : '#1f2937'}`, 
+                  color: "#e5e7eb", 
+                  padding: "12px 14px", 
+                  borderRadius: 10, 
+                  outline: "none" 
+                }}
               />
+              {role === "buyer" && !errors.email && <p style={{ color: "#60a5fa", fontSize: 11, marginTop: 4 }}>ℹ️ Buyers must use university email (.edu.pk)</p>}
+              {errors.email && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>⚠ {errors.email}</p>}
             </div>
             <div>
               <label className="block text-sm mb-2" style={{ color: "#9ca3af" }}>Password</label>
@@ -154,15 +229,43 @@ export default function Signup() {
                 type="password"
                 placeholder="••••••••"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errors.password) {
+                    const err = validatePassword(e.target.value);
+                    setErrors(prev => ({ ...prev, password: err }));
+                  }
+                }}
                 className="w-full"
-                style={{ background: "#0f172a", border: "1px solid #1f2937", color: "#e5e7eb", padding: "12px 14px", borderRadius: 10, outline: "none" }}
+                style={{ 
+                  background: "#0f172a", 
+                  border: `1px solid ${errors.password ? '#ef4444' : '#1f2937'}`, 
+                  color: "#e5e7eb", 
+                  padding: "12px 14px", 
+                  borderRadius: 10, 
+                  outline: "none" 
+                }}
               />
+              {!errors.password && password.length > 0 && <p style={{ color: "#9ca3af", fontSize: 11, marginTop: 4 }}>Can contain numbers or characters (min 2 chars)</p>}
+              {errors.password && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>⚠ {errors.password}</p>}
             </div>
-            <label className="flex items-start gap-3" style={{ color: "#9ca3af", fontSize: 14 }}>
-              <input type="checkbox" className="mt-1" />
-              I agree to the Terms & Conditions and Privacy Policy
-            </label>
+            <div>
+              <label className="flex items-start gap-3" style={{ color: errors.terms ? "#ef4444" : "#9ca3af", fontSize: 14 }}>
+                <input 
+                  type="checkbox" 
+                  className="mt-1" 
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked);
+                    if (errors.terms && e.target.checked) {
+                      setErrors(prev => ({ ...prev, terms: null }));
+                    }
+                  }}
+                />
+                I agree to the Terms & Conditions and Privacy Policy
+              </label>
+              {errors.terms && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4, marginLeft: 28 }}>⚠ {errors.terms}</p>}
+            </div>
           </div>
 
           {/* Create Account */}

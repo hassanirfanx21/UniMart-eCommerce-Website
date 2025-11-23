@@ -94,11 +94,21 @@ export default function Catalogue() {
   //-----------------------Rating function---    ----------------------------- ----------------- -----------------
   const handleRating = async (type) => {
     const token = localStorage.getItem("token");
-    if (!token) return alert("Please log in first");
+    if (!token) return alert("⚠ Please log in first");
+    
+    // Validate rating type
+    if (type !== "up" && type !== "down") {
+      return alert("⚠ Invalid rating type");
+    }
+    
+    // Validate product
+    if (!selectedProduct || !selectedProduct.product_id) {
+      return alert("⚠ Invalid product selected");
+    }
 
     try {
       // 1️⃣ Send the rating to backend
-      await fetch("http://localhost:5000/rate-product", {
+      const rateRes = await fetch("http://localhost:5000/rate-product", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -109,6 +119,11 @@ export default function Catalogue() {
           rating: type,
         }),
       });
+      
+      if (!rateRes.ok) {
+        const errorData = await rateRes.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to submit rating");
+      }
 
       // 2️⃣ Fetch updated product counts
       const res = await fetch("http://localhost:5000/products", {
@@ -118,6 +133,9 @@ export default function Catalogue() {
           Authorization: `Bearer ${token}`,
         },
       });
+      
+      if (!res.ok) throw new Error("Failed to fetch updated products");
+      
       const updatedProducts = await res.json();
 
       // 3️⃣ Update both products grid & modal
@@ -126,12 +144,15 @@ export default function Catalogue() {
       const updatedSelected = Object.values(updatedProducts)
         .flat()
         .find((p) => p.product_id === selectedProduct.product_id);
-      setSelectedProduct(updatedSelected);
+      
+      if (updatedSelected) {
+        setSelectedProduct(updatedSelected);
+      }
 
-      alert(`You RATED this product`);
-      // alert(`You ${type === "up" ? "liked" : "disliked"} this product`);
+      alert(`✅ You RATED this product`);
     } catch (err) {
       console.error("Rating error:", err);
+      alert("⚠ " + (err.message || "Failed to rate product"));
     }
   };
   /////_____________________________________________________________________________-
@@ -141,14 +162,27 @@ export default function Catalogue() {
   const getFilteredProducts = () => {
     const items = products[activeTab] || [];
     if (!searchQuery) return items;
+    
+    // Sanitize search query to prevent XSS
+    const sanitizedQuery = searchQuery.trim().toLowerCase();
+    if (sanitizedQuery.length > 100) {
+      alert("⚠ Search query is too long");
+      return items;
+    }
+    
     return items.filter((p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase())
+      p.name && p.name.toLowerCase().includes(sanitizedQuery)
     );
   };
   //bookmark
   const handleBookmark = async (productId) => {
     const token = localStorage.getItem("token");
-    if (!token) return alert("Please log in first");
+    if (!token) return alert("⚠ Please log in first");
+    
+    // Validate product ID
+    if (!productId || isNaN(productId)) {
+      return alert("⚠ Invalid product ID");
+    }
 
     try {
       const res = await fetch("http://localhost:5000/bookmark-product", {
@@ -160,11 +194,15 @@ export default function Catalogue() {
         body: JSON.stringify({ product_id: productId }),
       });
 
-      if (!res.ok) throw new Error("Failed to bookmark");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to bookmark");
+      }
 
-      alert("Product bookmarked!");
+      alert("✅ Product bookmarked!");
     } catch (err) {
       console.error("Bookmark error:", err);
+      alert("⚠ " + (err.message || "Failed to bookmark product"));
     }
   };
   //-----
@@ -245,8 +283,18 @@ export default function Catalogue() {
   // Submit a new feedback
   const submitFeedback = async () => {
     const token = localStorage.getItem("token");
-    if (!token) return alert("Please log in to add feedback");
-    if (!newFeedbackMessage.trim()) return alert("Please enter a message");
+    if (!token) return alert("⚠ Please log in to add feedback");
+    
+    // Validate message
+    const message = newFeedbackMessage.trim();
+    if (!message) return alert("⚠ Please enter a message");
+    if (message.length < 3) return alert("⚠ Feedback must be at least 3 characters long");
+    if (message.length > 500) return alert("⚠ Feedback must not exceed 500 characters");
+    
+    // Validate product
+    if (!selectedProduct || !selectedProduct.product_id) {
+      return alert("⚠ Invalid product selected");
+    }
 
     setSubmittingFeedback(true);
     try {
@@ -258,7 +306,7 @@ export default function Catalogue() {
         },
         body: JSON.stringify({
           product_id: selectedProduct.product_id,
-          message: newFeedbackMessage.trim(),
+          message: message,
         }),
       });
 
@@ -269,10 +317,10 @@ export default function Catalogue() {
       await fetchFeedbacks(selectedProduct.product_id);
       setNewFeedbackMessage("");
       setShowAddFeedbackModal(false);
-      alert("Feedback submitted");
+      alert("✅ Feedback submitted successfully");
     } catch (err) {
       console.error("Submit feedback error:", err);
-      alert(err.message || "Failed to submit feedback");
+      alert("⚠ " + (err.message || "Failed to submit feedback"));
     } finally {
       setSubmittingFeedback(false);
     }

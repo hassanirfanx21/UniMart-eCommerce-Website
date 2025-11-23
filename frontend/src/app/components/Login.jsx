@@ -7,10 +7,45 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("buyer"); // default role
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  const validateEmail = (email, role) => {
+    if (!email.trim()) return "Email is required";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return "Please enter a valid email address";
+    
+    // Buyer must have .edu.pk email
+    if (role === "buyer" && !email.toLowerCase().endsWith(".edu.pk")) {
+      return "Buyers must use a university email ending with .edu.pk";
+    }
+    return null;
+  };
+
+  const validatePassword = (password) => {
+    if (!password) return "Password is required";
+    if (password.length < 2) return "Password must be at least 2 characters";
+    return null;
+  };
+
   const handleLogin = async () => {
-    if (!email || !password) return alert("Fill all fields!");
+    setErrors({});
+    const newErrors = {};
+
+    const emailError = validateEmail(email, role);
+    const passwordError = validatePassword(password);
+
+    if (emailError) newErrors.email = emailError;
+    if (passwordError) newErrors.password = passwordError;
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      alert(Object.values(newErrors)[0]);
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const res = await fetch("http://localhost:5000/login", {
@@ -21,30 +56,27 @@ export default function Login() {
 
       const data = await res.json();
       if (res.ok) {
-        alert(`Logged in as ${role}`);
-        localStorage.setItem("token", data.token); // store JWT
-        // Trust the selected role from the UI to drive navbar
+        alert(`✅ Logged in as ${role}`);
+        localStorage.setItem("token", data.token);
         localStorage.setItem("role", role);
-        // router.push("/");
-        // ✅ Redirect based on role
+        
         if (role === "buyer") {
-          router.push("/catalogue"); // or "/CataloguePage" based on your route
+          router.push("/catalogue");
         } else if (role === "seller") {
-          router.push("/add-product"); // Placeholder for seller dashboard route
+          router.push("/add-product");
         } else if (role === "admin") {
-          router.push("/admin-dashboard"); // Placeholder for admin dashboard route
-          // router.push("/admin-dashboard"); // Placeholder for admin dashboard route
+          router.push("/admin-dashboard");
         } else {
-          router.push("/"); //i have to change this after login and add a dashboard for seller and admin
-          ///keep in minds for later that i have to create a dashboard for seller and admin
-          //
+          router.push("/");
         }
       } else {
-        alert(data.message || "Login failed");
+        alert(data.message || "❌ Login failed. Please check your credentials.");
       }
     } catch (err) {
       console.error(err);
-      alert("Server error");
+      alert("❌ Server error. Please try again later.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -108,7 +140,14 @@ export default function Login() {
               {["buyer","seller","admin"].map(r => (
                 <button
                   key={r}
-                  onClick={() => setRole(r)}
+                  onClick={() => {
+                    setRole(r);
+                    // Re-validate email when role changes
+                    if (email) {
+                      const err = validateEmail(email, r);
+                      setErrors(prev => ({ ...prev, email: err }));
+                    }
+                  }}
                   style={{
                     flex: 1,
                     padding: "10px 14px",
@@ -130,13 +169,19 @@ export default function Login() {
               <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#9ca3af", marginBottom: 6 }}>Email</label>
               <input
                 type="email"
-                placeholder="JohnDoe@gmail.edu.pk"
+                placeholder={role === "buyer" ? "student@university.edu.pk" : "your@email.com"}
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) {
+                    const err = validateEmail(e.target.value, role);
+                    setErrors(prev => ({ ...prev, email: err }));
+                  }
+                }}
                 style={{
                   width: "100%",
                   background: "#0f172a",
-                  border: "1px solid #1f2937",
+                  border: `1px solid ${errors.email ? '#ef4444' : '#1f2937'}`,
                   color: "#e5e7eb",
                   padding: "12px 14px",
                   borderRadius: 10,
@@ -144,6 +189,8 @@ export default function Login() {
                   fontSize: 14,
                 }}
               />
+              {role === "buyer" && !errors.email && <p style={{ color: "#60a5fa", fontSize: 11, marginTop: 4 }}>ℹ️ Buyers must use university email (.edu.pk)</p>}
+              {errors.email && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>⚠ {errors.email}</p>}
             </div>
             <div>
               <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#9ca3af", marginBottom: 6 }}>Password</label>
@@ -151,11 +198,20 @@ export default function Login() {
                 type="password"
                 placeholder="Password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errors.password) {
+                    const err = validatePassword(e.target.value);
+                    setErrors(prev => ({ ...prev, password: err }));
+                  }
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !loading) handleLogin();
+                }}
                 style={{
                   width: "100%",
                   background: "#0f172a",
-                  border: "1px solid #1f2937",
+                  border: `1px solid ${errors.password ? '#ef4444' : '#1f2937'}`,
                   color: "#e5e7eb",
                   padding: "12px 14px",
                   borderRadius: 10,
@@ -163,6 +219,7 @@ export default function Login() {
                   fontSize: 14,
                 }}
               />
+              {errors.password && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>⚠ {errors.password}</p>}
             </div>
           </div>
 
@@ -186,6 +243,7 @@ export default function Login() {
             </button>
             <button
               onClick={handleLogin}
+              disabled={loading}
               style={{
                 flex: 1,
                 background: "#0f172a",
@@ -194,10 +252,11 @@ export default function Login() {
                 fontWeight: 800,
                 padding: "12px 16px",
                 borderRadius: 10,
-                cursor: "pointer",
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1,
               }}
             >
-              Next
+              {loading ? "Logging in..." : "Next"}
             </button>
           </div>
 

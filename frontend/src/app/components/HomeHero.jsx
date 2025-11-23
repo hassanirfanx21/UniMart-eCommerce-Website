@@ -1,9 +1,11 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 
 export default function HomeHero({
   heroImage = "https://res.cloudinary.com/dy20mrrq9/image/upload/v1763217241/nust_eawxu3.png",
 }) {
+  const [imageError, setImageError] = useState(false);
+  
   return (
     <section
       style={{
@@ -160,14 +162,34 @@ export default function HomeHero({
                 overflow: "hidden",
                 border: "1px solid #1f2937",
                 boxShadow: "inset 0 0 0 1px rgba(255,255,255,.02), 0 30px 80px rgba(0,0,0,.45)",
-                background: "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0))",
+                background: imageError 
+                  ? "linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(34,211,238,0.1) 100%)"
+                  : "linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 520,
               }}
             >
-              <img
-                src={heroImage}
-                alt="Campus building"
-                style={{ width: "100%", height: 520, objectFit: "cover", display: "block" }}
-              />
+              {!imageError ? (
+                <img
+                  src={heroImage}
+                  alt="Campus building"
+                  style={{ width: "100%", height: 520, objectFit: "cover", display: "block" }}
+                  onError={() => setImageError(true)}
+                  loading="lazy"
+                />
+              ) : (
+                <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: "0 auto 16px" }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  <div style={{ fontSize: 18, fontWeight: 600, color: "#94a3b8" }}>UniMart</div>
+                  <div style={{ fontSize: 14, marginTop: 8 }}>Student Marketplace</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
